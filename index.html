@@ -128,7 +128,8 @@ footer button{background:none;border:0;color:var(--soft);text-decoration:underli
    (build.py checks every stem). Progress lives only on this device (localStorage). */
 const P = window.PHYS, U = P.unit, KEY = U.key;
 const GKEYS = P.groups.map(g => g[0]), GLABEL = Object.fromEntries(P.groups), DECKS = P.decks || [];
-const LADDER = [0, 1, 4, 10, 21, 45], DAY = 864e5, today = () => Math.floor(Date.now() / DAY);
+const LADDER = [0, 1, 4, 10, 21, 45], DAY = 864e5;
+const today = () => { const d = new Date(); return Math.floor((d.getTime() - d.getTimezoneOffset() * 6e4) / DAY); };   /* local day, so it turns over at midnight, not 5 PM */
 let S = {cards:{}, q:{}, best:{}, tests:[], dk:{}};
 try { S = Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
@@ -171,6 +172,7 @@ const routes = [
   [/^explain\/(e\d+)$/, m => explain(P.explain.find(e => e.id === m[1]))],
 ];
 function route() {
+  document.onkeydown = null;   /* a quiz's a/b/c/d keys must never answer from another page */
   const h = decodeURIComponent(location.hash.replace(/^#/, ''));
   for (const [re, fn] of routes) { const m = h.match(re); if (m) { window.scrollTo(0, 0); return fn(m); } }
   home();
@@ -313,7 +315,7 @@ function quizMenu() {
   <div class="modes">${GKEYS.map((ch, gi) => { const qs = P.mcq.filter(q => topic(q.kc).ch === ch), r = qs.filter(q => S.q[q.id]?.r === 1).length;
     const [head, ...rest] = GLABEL[ch].split(' · ');
     return mode('#quiz/g/' + ch, '<span style="font-weight:800;color:' + chColor(ch) + '">' + (gi + 1) + '</span>', esc(rest.join(' · ') || head), esc(rest.length ? head : ''), `${r}/${qs.length} right`); }).join('')}
-    ${mode('#quiz/mixed', '🔀', 'Mixed', 'Every section, mixed the way the exam mixes them', '')}</div>`;
+    ${mode('#quiz/mixed', '🔀', 'Mixed', 'Every section, at random', '')}</div>`;
   wire();
 }
 const LET = 'ABCD';
@@ -337,9 +339,11 @@ function quiz(list, opt) {
         <div class="row" style="margin-top:14px"><button class="btn" id="nx">${i + 1 < list.length ? 'Next' : 'See my score'}</button><a class="note" href="#kc/${t.id}" style="color:var(--accent)">Key Concept ${kcNum(t.id)}: ${esc(t.title)}</a></div>`;
       $('#nx').onclick = () => { i++; show(); }; $('#nx').focus();
     };
-    app.querySelectorAll('.choice').forEach(b => b.onclick = () => answer(+b.dataset.o));
-    document.onkeydown = e => { const k = '1234'.indexOf(e.key) >= 0 ? '1234'.indexOf(e.key) : 'abcd'.indexOf(e.key.toLowerCase());
-      if (k >= 0 && !app.querySelector('.choice[disabled]') && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'TEXTAREA') answer(perm[k]); };
+    const own = [...app.querySelectorAll('.choice')];
+    own.forEach(b => b.onclick = () => answer(+b.dataset.o));
+    document.onkeydown = e => { if (!own.length || !own[0].isConnected || own.some(b => b.disabled)) return;   /* only this question's own buttons */
+      const k = '1234'.indexOf(e.key) >= 0 ? '1234'.indexOf(e.key) : 'abcd'.indexOf(e.key.toLowerCase());
+      if (k >= 0 && !e.metaKey && !e.ctrlKey && !e.altKey && document.activeElement.tagName !== 'TEXTAREA') answer(perm[k]); };
   };
   show();
 }
@@ -348,18 +352,20 @@ function quiz(list, opt) {
 function test() {
   document.onkeydown = null;
   const kcs = shuffle(P.topics.map(t => t.id)).slice(0, 25);
-  const list = shuffle(kcs.map(k => shuffle(qsFor(k))[0]));
+  const used = new Set();
+  const list = shuffle(kcs.map(k => { const q = shuffle(qsFor(k)).find(x => !used.has(x.id)); if (q) used.add(q.id); return q; }).filter(Boolean));
   const ans = new Array(list.length).fill(null), perms = list.map(() => shuffle([0, 1, 2, 3]));
   let i = 0;
   const show = () => {
     const q = list[i], perm = perms[i];
-    app.innerHTML = `<p class="progress">${backLink()}<span>Practice test · ${i + 1} of ${list.length} · ${ans.filter(a => a != null).length} answered</span></p><div class="pbar"><i style="width:${100 * (i + 1) / list.length}%"></i></div>
+    const count = () => `Practice test · ${i + 1} of ${list.length} · ${ans.filter(a => a != null).length} answered`;
+    app.innerHTML = `<p class="progress">${backLink()}<span id="tc">${count()}</span></p><div class="pbar"><i style="width:${100 * (i + 1) / list.length}%"></i></div>
     <div class="card">${q.title ? `<div class="case-h">🩺 Case · ${esc(q.title)}</div>` : ''}<p class="stem">${esc(q.q)}</p>
       <div class="choices">${perm.map((o, k) => `<button class="choice ${ans[i] === o ? 'picked' : ''}" data-o="${o}" aria-pressed="${ans[i] === o}"><span class="L">${LET[k]}</span><span>${esc(q.c[o])}</span></button>`).join('')}</div>
       <div class="row" style="margin-top:16px;justify-content:space-between"><button class="btn ghost" id="pv" ${i ? '' : 'disabled'}>‹ Back</button>
         ${i + 1 < list.length ? '<button class="btn" id="nx">Next ›</button>' : '<button class="btn ok" id="fin">Finish and score</button>'}</div></div>
     <p class="note" style="text-align:center">No hints during the test. You will see every answer explained at the end.</p>`;
-    app.querySelectorAll('.choice').forEach(b => b.onclick = () => { ans[i] = +b.dataset.o; app.querySelectorAll('.choice').forEach(x => { x.classList.toggle('picked', x === b); x.setAttribute('aria-pressed', x === b); }); });
+    app.querySelectorAll('.choice').forEach(b => b.onclick = () => { ans[i] = +b.dataset.o; app.querySelectorAll('.choice').forEach(x => { x.classList.toggle('picked', x === b); x.setAttribute('aria-pressed', x === b); }); $('#tc').textContent = count(); });
     $('#pv').onclick = () => { i--; show(); };
     if ($('#nx')) $('#nx').onclick = () => { i++; show(); };
     if ($('#fin')) $('#fin').onclick = () => { const blank = ans.filter(a => a == null).length;

@@ -85,6 +85,14 @@ details ul{margin:8px 0 0;padding-left:18px;font-size:15px} details li{margin:4p
 .label{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--soft);font-weight:700;margin-top:12px}
 .big{font-size:24px;font-weight:700;line-height:1.25}
 .back-face{margin-top:14px;border-top:1px dashed var(--line);padding-top:14px}
+.pics{display:grid;gap:10px;margin-top:12px}
+.pics.many{grid-template-columns:1fr 1fr}
+.pics figure{margin:0;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pics img{display:block;width:100%;height:auto;max-height:42vh;object-fit:contain}
+.pics.many img{aspect-ratio:4/3;height:auto;max-height:none}
+.pics.five{grid-template-columns:1fr 1fr 1fr}
+.pics figcaption{font-size:13px;line-height:1.3;padding:4px 8px 6px;color:#3a4148;background:#fff}
+.credit{font-size:11px;color:var(--soft);margin:6px 0 0}
 textarea{width:100%;font:inherit;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);min-height:120px;resize:vertical}
 .model{background:color-mix(in srgb,var(--accent) 8%,transparent);border-left:4px solid var(--accent);padding:12px 14px;border-radius:10px;margin-top:12px}
 .check{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
@@ -282,6 +290,8 @@ function cards() {
 function grade(t, knew) { const st = S.cards[t.id] || {box:0}; st.box = knew ? Math.min(st.box + 1, LADDER.length - 1) : 1; st.due = today() + (knew ? LADDER[st.box] : 1); S.cards[t.id] = st; save(); }
 
 /* ---------- card decks (muscles, openings): front -> back, spaced like the Key Concept cards ---------- */
+const pics = c => `<div class="pics${c.img.length > 1 ? ' many' : ''}${c.img.length > 4 ? ' five' : ''}">${c.img.map(p => `<figure><img src="${esc(p.src)}" alt="${esc(p.name || c.front)}" decoding="async">${c.img.length > 1 && p.name ? `<figcaption>${esc(p.name)}</figcaption>` : ''}</figure>`).join('')}</div>`
+  + (c.note ? `<p class="note">${esc(c.note)}</p>` : '') + (c.credit ? `<p class="credit">Picture: ${esc(c.credit)}</p>` : '');
 function deck(d, kc) {
   if (!d) return home();
   document.onkeydown = null;
@@ -302,6 +312,7 @@ function deck(d, kc) {
       <div id="bf" class="back-face" hidden><div style="font-size:18px">${esc(c.back)}</div></div>
       <div class="row" style="margin-top:14px" id="act"><button class="btn" id="flip">Show the answer</button></div></div>`;
     $('#flip').onclick = () => { $('#bf').hidden = false;
+      if (c.img) $('#bf').insertAdjacentHTML('beforeend', pics(c));   // pictures load only when the card turns
       $('#act').innerHTML = '<button class="btn ok" id="y">I had it</button><button class="btn ghost" id="n">Not yet</button>';
       const g = knew => { const st = S.dk[c.id] || {box:0}; st.box = knew ? Math.min(st.box + 1, LADDER.length - 1) : 1; st.due = today() + (knew ? LADDER[st.box] : 1); S.dk[c.id] = st; save(); };
       $('#y').onclick = () => { g(true); got++; i++; show(); }; $('#n').onclick = () => { g(false); i++; show(); }; $('#y').focus(); };
